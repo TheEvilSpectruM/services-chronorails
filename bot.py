@@ -10,12 +10,14 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 RESULT_CHANNEL_ID = 1359893180014792724  # Salon où poster les résultats
+GUILD_ID = 123456789012345678  # Remplace par l'ID de ton serveur Discord
 
 @bot.event
 async def on_ready():
     print(f"Connecté en tant que {bot.user}")
     try:
-        synced = await bot.tree.sync()
+        guild = discord.Object(id=GUILD_ID)
+        synced = await bot.tree.sync(guild=guild)
         print(f"Commands synced: {len(synced)}")
     except Exception as e:
         print(f"Erreur lors de la synchronisation des commandes : {e}")
@@ -33,7 +35,7 @@ async def run_webserver():
     site = web.TCPSite(runner, '0.0.0.0', 8000)
     await site.start()
 
-@bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
+@bot.tree.command(name="statut", description="Affiche le statut actuel du bot", guild=discord.Object(id=GUILD_ID))
 async def statut(interaction: discord.Interaction):
     status = bot.status
     if status == discord.Status.online:
@@ -51,13 +53,10 @@ async def statut(interaction: discord.Interaction):
     
     await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
 
-GUILD_ID = 123456789012345678  # Mets ici l'ID de ton serveur Discord (guild)
-
 def is_staff():
     async def predicate(interaction: discord.Interaction) -> bool:
         staff_role_name = "Staff"
         member = interaction.user
-        # Vérifie si l'utilisateur est dans le serveur et a le rôle Staff
         if isinstance(member, discord.Member):
             for role in member.roles:
                 if role.name == staff_role_name:
@@ -95,7 +94,6 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
 
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
-
 
 async def main():
     await run_webserver()
