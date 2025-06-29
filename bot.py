@@ -10,14 +10,12 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 RESULT_CHANNEL_ID = 1359893180014792724  # Salon où poster les résultats
-GUILD_ID = 123456789012345678  # Remplace par l'ID de ton serveur Discord
 
 @bot.event
 async def on_ready():
     print(f"Connecté en tant que {bot.user}")
     try:
-        guild = discord.Object(id=GUILD_ID)
-        synced = await bot.tree.sync(guild=guild)
+        synced = await bot.tree.sync()  # Sync globale
         print(f"Commands synced: {len(synced)}")
     except Exception as e:
         print(f"Erreur lors de la synchronisation des commandes : {e}")
@@ -35,7 +33,7 @@ async def run_webserver():
     site = web.TCPSite(runner, '0.0.0.0', 8000)
     await site.start()
 
-@bot.tree.command(name="statut", description="Affiche le statut actuel du bot", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
 async def statut(interaction: discord.Interaction):
     status = bot.status
     if status == discord.Status.online:
@@ -65,7 +63,7 @@ def is_staff():
         return False
     return discord.app_commands.check(predicate)
 
-@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
 @is_staff()
 @discord.app_commands.describe(
     user="Utilisateur concerné",
