@@ -192,41 +192,44 @@ async def traffic(interaction: discord.Interaction, ligne: discord.app_commands.
         await interaction.response.send_message("Salon de trafic introuvable.", ephemeral=True)
         return
 
-    # Cherche le dernier message du bot dans ce salon
-    messages = await channel.history(limit=50).flatten()
-    bot_message = None
-    for msg in messages:
-        if msg.author == bot.user and msg.embeds:
-            bot_message = msg
-            break
+    try:
+        bot_message = None
+        async for msg in channel.history(limit=50):
+            if msg.author == bot.user and msg.embeds:
+                bot_message = msg
+                break
 
-    if bot_message is None:
-        await interaction.response.send_message("Aucun message embed du bot trouvé dans ce salon. Utilisez /renvoyer_embed d'abord.", ephemeral=True)
-        return
+        if bot_message is None:
+            await interaction.response.send_message(
+                "Aucun message embed du bot trouvé dans ce salon. Utilisez /renvoyer_embed d'abord.",
+                ephemeral=True
+            )
+            return
 
-    embed = bot_message.embeds[0]
-    # Récupère les champs existants
-    fields = {field.name: field.value for field in embed.fields}
+        embed = bot_message.embeds[0]
+        fields = {field.name: field.value for field in embed.fields}
 
-    # Met à jour le champ choisi
-    new_status = TRAFFIC_OPTIONS.get(probleme.value, "🟢 Opérationnel")
-    if ligne.value == "8Bis":
-        field_name = "Ligne 8Bis:"
-    elif ligne.value == "3Bis":
-        field_name = "Ligne 3Bis:"
-    else:
-        field_name = "Ligne 6:"
+        new_status = TRAFFIC_OPTIONS.get(probleme.value, "🟢 Opérationnel")
 
-    fields[field_name] = new_status
+        if ligne.value == "8Bis":
+            field_name = "Ligne 8Bis:"
+        elif ligne.value == "3Bis":
+            field_name = "Ligne 3Bis:"
+        else:
+            field_name = "Ligne 6:"
 
-    # Reconstruit l'embed avec les nouveaux statuts
-    new_embed = discord.Embed(title=embed.title, color=embed.color)
-    for name, val in fields.items():
-        new_embed.add_field(name=name, value=val, inline=False)
-    new_embed.set_footer(text=embed.footer.text if embed.footer else "")
+        fields[field_name] = new_status
 
-    await bot_message.edit(embed=new_embed)
-    await interaction.response.send_message(f"Statut de {field_name} mis à jour à '{new_status}'.", ephemeral=True)
+        new_embed = discord.Embed(title=embed.title, color=embed.color)
+        for name, val in fields.items():
+            new_embed.add_field(name=name, value=val, inline=False)
+        new_embed.set_footer(text=embed.footer.text if embed.footer else "")
+
+        await bot_message.edit(embed=new_embed)
+        await interaction.response.send_message(f"Statut de {field_name} mis à jour à '{new_status}'.", ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"Erreur lors de la mise à jour: {e}", ephemeral=True)
 
 
 async def main():
