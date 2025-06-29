@@ -50,7 +50,7 @@ async def statut(interaction: discord.Interaction):
 
 async def main():
     await run_webserver()
-    token = "TON_TOKEN_ICI"  # Pense à mettre ton token ici ou mieux, en variable d'env
+    token = "TOKEN"  # Pense à mettre ton token ici ou mieux, en variable d'env
     await bot.start(token)
 
 asyncio.run(main())
