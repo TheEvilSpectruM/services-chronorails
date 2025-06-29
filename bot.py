@@ -10,16 +10,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 RESULT_CHANNEL_ID = 1359893180014792724  # Salon où poster les résultats
-ROLE_IDS_ALLOWED = [1345857319585714316, 1361714714010189914]  # IDs des rôles autorisés (Staff 🛡️ et Responsable réseau)
-
-@bot.event
-async def on_ready():
-    print(f"Connecté en tant que {bot.user}")
-    try:
-        synced = await bot.tree.sync()
-        print(f"Commands synced: {len(synced)}")
-    except Exception as e:
-        print(f"Erreur lors de la synchronisation des commandes : {e}")
+ROLE_IDS_ALLOWED = [1345857319585714316, 1361714714010189914]  # Rôles autorisés (Staff 🛡️, Responsable réseau)
 
 # Serveur web pour health check Koyeb
 async def handle(request):
@@ -33,6 +24,15 @@ async def run_webserver():
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', 8000)
     await site.start()
+
+@bot.event
+async def on_ready():
+    print(f"Connecté en tant que {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Commands synced: {len(synced)}")
+    except Exception as e:
+        print(f"Erreur lors de la synchronisation des commandes : {e}")
 
 @bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
 async def statut(interaction: discord.Interaction):
@@ -71,7 +71,6 @@ async def statut(interaction: discord.Interaction):
     discord.app_commands.Choice(name="Non", value="non"),
 ])
 async def resultats(interaction: discord.Interaction, user: discord.Member, formation: discord.app_commands.Choice[str], passe: discord.app_commands.Choice[str]):
-    # Vérifier les rôles de l'utilisateur qui utilise la commande
     member = interaction.user
     if not isinstance(member, discord.Member):
         await interaction.response.send_message("Cette commande doit être utilisée dans un serveur.", ephemeral=True)
@@ -94,14 +93,33 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
 
-@bot.tree.command(name="checkme", description="Test les infos de ton utilisateur")
-async def checkme(interaction: discord.Interaction):
-    user = interaction.user
-    await interaction.response.send_message(
-        f"Type: {type(user)}\n"
-        f"Roles: {[role.name for role in user.roles] if isinstance(user, discord.Member) else 'N/A'}",
-        ephemeral=True
-    )
+@bot.tree.command(
+    name="postuler",
+    description="Obtiens le lien pour postuler à une formation"
+)
+@discord.app_commands.describe(
+    formation="Choisissez la formation pour postuler"
+)
+@discord.app_commands.choices(formation=[
+    discord.app_commands.Choice(name="Staff", value="Staff"),
+    discord.app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
+    discord.app_commands.Choice(name="PCC", value="PCC"),
+])
+async def postuler(interaction: discord.Interaction, formation: discord.app_commands.Choice[str]):
+    liens = {
+        "Staff": "https://docs.google.com/forms/d/1dkl-CJNiUlesD7sSDLJKw0HokJE8zLIrcN4GwD0nGqo/viewform?edit_requested=true",
+        "Conducteur [CM]": "https://docs.google.com/forms/d/e/1FAIpQLSe2rxLd7w-rrPtPxxwvOAhDC7YD0J8II-YJn_MEyKhSg0csyQ/viewform?usp=header",
+        "PCC": "https://docs.google.com/forms/d/1lCdDmKSKl6uN68oh0IMRnJwtgJE7bZMSSu9kA7xTXYw/viewform?edit_requested=true"
+    }
+
+    lien = liens.get(formation.value)
+    if not lien:
+        await interaction.response.send_message("Formation inconnue.", ephemeral=True)
+        return
+
+    msg = f"Pour postuler au rôle de **{formation.value}**, clique [ici]({lien})."
+
+    await interaction.response.send_message(msg, ephemeral=True)
 
 async def main():
     await run_webserver()
