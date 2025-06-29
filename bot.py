@@ -51,7 +51,23 @@ async def statut(interaction: discord.Interaction):
     
     await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
 
-@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
+GUILD_ID = 123456789012345678  # Mets ici l'ID de ton serveur Discord (guild)
+
+def is_staff():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        staff_role_name = "Staff"
+        member = interaction.user
+        # Vérifie si l'utilisateur est dans le serveur et a le rôle Staff
+        if isinstance(member, discord.Member):
+            for role in member.roles:
+                if role.name == staff_role_name:
+                    return True
+        await interaction.response.send_message("⛔ Vous devez être Staff pour utiliser cette commande.", ephemeral=True)
+        return False
+    return discord.app_commands.check(predicate)
+
+@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur", guild=discord.Object(id=GUILD_ID))
+@is_staff()
 @discord.app_commands.describe(
     user="Utilisateur concerné",
     formation="Formation concernée",
@@ -79,6 +95,7 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
 
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+
 
 async def main():
     await run_webserver()
