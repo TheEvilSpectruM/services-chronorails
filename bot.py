@@ -1,27 +1,32 @@
-import os
 import discord
 from discord.ext import commands
+import asyncio
+from aiohttp import web
 
-# Configuration des intents
 intents = discord.Intents.default()
-intents.message_content = True  # Permet de lire le contenu des messages
+intents.message_content = True
 
-# Création du bot avec un préfixe "!"
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"{bot.user} est connecté !")
+    print(f"Connecté en tant que {bot.user}")
 
-# Exemple simple de commande
-@bot.command()
-async def ping(ctx):
-    await ctx.send("Pong !")
+# Mini serveur web pour Koyeb health check
+async def handle(request):
+    return web.Response(text="OK")
 
-# Récupération du token depuis une variable d'environnement pour la sécurité
-token = os.getenv("TOKEN")
+app = web.Application()
+app.add_routes([web.get('/', handle)])
 
-if token is None:
-    print("Erreur : le token du bot n'est pas défini dans la variable d'environnement TOKEN.")
-else:
-    bot.run(token)
+async def run_webserver():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    await site.start()
+
+async def main():
+    await run_webserver()
+    await bot.start('mtm4odc2mjgxmtq5njeznjcxna.gpmrko.10ln9abddgtijxxra4ro_obfti5zx16miopbji')
+
+asyncio.run(main())
