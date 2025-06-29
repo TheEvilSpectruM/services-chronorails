@@ -10,13 +10,25 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 RESULT_CHANNEL_ID = 1359893180014792724  # Salon où poster les résultats
-STAFF_ROLE_ID = 1345857319585714316      # ID du rôle Staff 🛡️
+GUILD_ID = 123456789012345678  # Remplace par ton serveur pour test
+
+# Vérification rôle Staff 🛡️ ou Responsable réseau
+def is_staff_or_responsable():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        allowed_role_ids = {1345857319585714316, 1361714714010189914}
+        member = interaction.user
+        if isinstance(member, discord.Member):
+            if any(role.id in allowed_role_ids for role in member.roles):
+                return True
+        await interaction.response.send_message("⛔ Vous devez être Staff 🛡️ ou Responsable réseau pour utiliser cette commande.", ephemeral=True)
+        return False
+    return discord.app_commands.check(predicate)
 
 @bot.event
 async def on_ready():
     print(f"Connecté en tant que {bot.user}")
     try:
-        synced = await bot.tree.sync()
+        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
         print(f"Commands synced: {len(synced)}")
     except Exception as e:
         print(f"Erreur lors de la synchronisation des commandes : {e}")
@@ -52,18 +64,12 @@ async def statut(interaction: discord.Interaction):
     
     await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
 
-def is_staff():
-    async def predicate(interaction: discord.Interaction) -> bool:
-        member = interaction.user
-        if isinstance(member, discord.Member):
-            if any(role.id == STAFF_ROLE_ID for role in member.roles):
-                return True
-        await interaction.response.send_message("⛔ Vous devez être Staff 🛡️ pour utiliser cette commande.", ephemeral=True)
-        return False
-    return discord.app_commands.check(predicate)
-
-@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
-@is_staff()
+@bot.tree.command(
+    name="resultats",
+    description="Envoyer les résultats d'une formation à un utilisateur",
+    guild=discord.Object(id=GUILD_ID)
+)
+@is_staff_or_responsable()
 @discord.app_commands.describe(
     user="Utilisateur concerné",
     formation="Formation concernée",
