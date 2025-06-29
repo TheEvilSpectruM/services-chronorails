@@ -1,3 +1,4 @@
+import os
 import discord
 from discord.ext import commands
 import asyncio
@@ -27,6 +28,10 @@ async def run_webserver():
 
 async def main():
     await run_webserver()
-    await bot.start('mtm4odc2mjgxmtq5njeznjcxna.gpmrko.10ln9abddgtijxxra4ro_obfti5zx16miopbji')
+    token = os.getenv('TOKEN')  # Récupère le token depuis la variable d'environnement
+    if not token:
+        print("Erreur : variable d'environnement TOKEN non définie")
+        return
+    await bot.start(token)
 
 asyncio.run(main())
