@@ -10,12 +10,13 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 RESULT_CHANNEL_ID = 1359893180014792724  # Salon où poster les résultats
+STAFF_ROLE_ID = 1345857319585714316      # ID du rôle Staff 🛡️
 
 @bot.event
 async def on_ready():
     print(f"Connecté en tant que {bot.user}")
     try:
-        synced = await bot.tree.sync()  # Sync globale
+        synced = await bot.tree.sync()
         print(f"Commands synced: {len(synced)}")
     except Exception as e:
         print(f"Erreur lors de la synchronisation des commandes : {e}")
@@ -55,13 +56,11 @@ def is_staff():
     async def predicate(interaction: discord.Interaction) -> bool:
         member = interaction.user
         if isinstance(member, discord.Member):
-            staff_role_id = 1345857319585714316
-            if any(role.id == staff_role_id for role in member.roles):
+            if any(role.id == STAFF_ROLE_ID for role in member.roles):
                 return True
-        await interaction.response.send_message("⛔ Vous devez être Staff pour utiliser cette commande.", ephemeral=True)
+        await interaction.response.send_message("⛔ Vous devez être Staff 🛡️ pour utiliser cette commande.", ephemeral=True)
         return False
     return discord.app_commands.check(predicate)
-
 
 @bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
 @is_staff()
@@ -92,14 +91,6 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
 
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
-
-# Gestion des erreurs des commandes app_commands
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    if isinstance(error, discord.app_commands.CheckFailure):
-        await interaction.response.send_message("⛔ Vous devez être Staff pour utiliser cette commande.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"Erreur : {error}", ephemeral=True)
 
 async def main():
     await run_webserver()
