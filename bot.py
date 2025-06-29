@@ -53,12 +53,15 @@ async def statut(interaction: discord.Interaction):
 
 def is_staff():
     async def predicate(interaction: discord.Interaction) -> bool:
-        staff_role_name = "Staff"
         member = interaction.user
         if isinstance(member, discord.Member):
-            return any(role.name == staff_role_name for role in member.roles)
+            staff_role_id = 1345857319585714316
+            if any(role.id == staff_role_id for role in member.roles):
+                return True
+        await interaction.response.send_message("⛔ Vous devez être Staff pour utiliser cette commande.", ephemeral=True)
         return False
     return discord.app_commands.check(predicate)
+
 
 @bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
 @is_staff()
