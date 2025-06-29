@@ -56,10 +56,7 @@ def is_staff():
         staff_role_name = "Staff"
         member = interaction.user
         if isinstance(member, discord.Member):
-            for role in member.roles:
-                if role.name == staff_role_name:
-                    return True
-        await interaction.response.send_message("⛔ Vous devez être Staff pour utiliser cette commande.", ephemeral=True)
+            return any(role.name == staff_role_name for role in member.roles)
         return False
     return discord.app_commands.check(predicate)
 
@@ -92,6 +89,14 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
 
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+
+# Gestion des erreurs des commandes app_commands
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, discord.app_commands.CheckFailure):
+        await interaction.response.send_message("⛔ Vous devez être Staff pour utiliser cette commande.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"Erreur : {error}", ephemeral=True)
 
 async def main():
     await run_webserver()
