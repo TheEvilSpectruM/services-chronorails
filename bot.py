@@ -94,6 +94,14 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
 
+@bot.tree.command(name="checkme", description="Test les infos de ton utilisateur")
+async def checkme(interaction: discord.Interaction):
+    user = interaction.user
+    await interaction.response.send_message(
+        f"Type: {type(user)}\n"
+        f"Roles: {[role.name for role in user.roles] if isinstance(user, discord.Member) else 'N/A'}",
+        ephemeral=True
+    )
 
 async def main():
     await run_webserver()
