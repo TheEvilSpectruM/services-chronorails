@@ -48,9 +48,15 @@ async def statut(interaction: discord.Interaction):
     
     await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
 
+import os
+
 async def main():
     await run_webserver()
-    token = "TOKEN"  # Pense à mettre ton token ici ou mieux, en variable d'env
+    token = os.getenv("TOKEN")  # Récupère le token depuis les variables d'environnement
+    if not token:
+        print("Erreur : la variable d'environnement TOKEN est manquante !")
+        return
     await bot.start(token)
+
 
 asyncio.run(main())
