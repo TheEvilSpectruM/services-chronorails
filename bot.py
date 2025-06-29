@@ -34,6 +34,24 @@ async def run_webserver():
     site = web.TCPSite(runner, '0.0.0.0', 8000)
     await site.start()
 
+@bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
+async def statut(interaction: discord.Interaction):
+    status = bot.status
+    if status == discord.Status.online:
+        emoji = "🟢"
+        texte = "En ligne"
+    elif status == discord.Status.idle:
+        emoji = "🟡"
+        texte = "Problèmes mineurs"
+    elif status == discord.Status.offline or status == discord.Status.invisible:
+        emoji = "🔴"
+        texte = "Hors Ligne"
+    else:
+        emoji = "❔"
+        texte = "Statut inconnu"
+    
+    await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
+
 @bot.tree.command(
     name="resultats",
     description="Envoyer les résultats d'une formation à un utilisateur"
@@ -75,6 +93,15 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
 
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+
+@bot.tree.command(name="checkme", description="Test les infos de ton utilisateur")
+async def checkme(interaction: discord.Interaction):
+    user = interaction.user
+    await interaction.response.send_message(
+        f"Type: {type(user)}\n"
+        f"Roles: {[role.name for role in user.roles] if isinstance(user, discord.Member) else 'N/A'}",
+        ephemeral=True
+    )
 
 async def main():
     await run_webserver()
