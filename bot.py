@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from aiohttp import web
 import asyncio
 import os
@@ -10,11 +11,12 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-RESULT_CHANNEL_ID = 1359893180014792724
-TRAFFIC_CHANNEL_ID = 1379137936796291224
-MARKET_CHANNEL_ID = 1387107501031293120
+# CONSTANTES
+RESULT_CHANNEL_ID = 1359893180014792724  # Salon résultats formations
+TRAFFIC_CHANNEL_ID = 1379137936796291224  # (Pour l'embed trafic, si besoin)
+PRODUCTS_CHANNEL_ID = 1387107501031293120  # Salon où poster les produits
 
-ROLE_IDS_ALLOWED = [1345857319585714316, 1361714714010189914]
+ROLE_IDS_ALLOWED = [1345857319585714316, 1361714714010189914]  # Staff et Responsable réseau
 
 FORM_LINKS = {
     "Staff": "https://docs.google.com/forms/d/1dkl-CJNiUlesD7sSDLJKw0HokJE8zLIrcN4GwD0nGqo/viewform?edit_requested=true",
@@ -24,16 +26,7 @@ FORM_LINKS = {
 
 PRODUCTS_FILE = "products.json"
 
-def load_products():
-    if not os.path.exists(PRODUCTS_FILE):
-        return []
-    with open(PRODUCTS_FILE, "r") as f:
-        return json.load(f)
-
-def save_products(products):
-    with open(PRODUCTS_FILE, "w") as f:
-        json.dump(products, f, indent=4)
-
+# --- Helpers ---
 def is_staff():
     async def predicate(interaction: discord.Interaction) -> bool:
         member = interaction.user
@@ -44,18 +37,176 @@ def is_staff():
             return True
         await interaction.response.send_message("⛔ Vous devez être Staff ou Responsable réseau pour utiliser cette commande.", ephemeral=True)
         return False
-    return discord.app_commands.check(predicate)
+    return app_commands.check(predicate)
 
-@bot.event
-async def on_ready():
-    print(f"Connecté en tant que {bot.user}")
+def load_products():
     try:
-        synced = await bot.tree.sync()
-        print(f"Commands synced: {len(synced)}")
-    except Exception as e:
-        print(f"Erreur lors de la synchronisation des commandes : {e}")
+        with open(PRODUCTS_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
-# Health check pour hébergement
+def save_products(products):
+    with open(PRODUCTS_FILE, "w") as f:
+        json.dump(products, f, indent=4)
+
+
+# --- Commandes ---
+
+# 1) /statut
+@bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
+async def statut(interaction: discord.Interaction):
+    status = bot.status
+    if status == discord.Status.online:
+        emoji = "🟢"
+        texte = "En ligne"
+    elif status == discord.Status.idle:
+        emoji = "🟡"
+        texte = "Problèmes mineurs"
+    elif status == discord.Status.offline or status == discord.Status.invisible:
+        emoji = "🔴"
+        texte = "Hors Ligne"
+    else:
+        emoji = "❔"
+        texte = "Statut inconnu"
+    await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
+
+# 2) /postuler
+@bot.tree.command(
+    name="postuler",
+    description="Obtenir le lien pour postuler à une formation"
+)
+@app_commands.describe(formation="Choisissez une formation")
+@app_commands.choices(formation=[
+    app_commands.Choice(name="Staff", value="Staff"),
+    app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
+    app_commands.Choice(name="PCC", value="PCC"),
+])
+async def postuler(interaction: discord.Interaction, formation: app_commands.Choice[str]):
+    lien = FORM_LINKS.get(formation.value)
+    if not lien:
+        await interaction.response.send_message("Lien de formulaire introuvable.", ephemeral=True)
+        return
+    await interaction.response.send_message(
+        f"Pour postuler au rôle de **{formation.value}**, cliquez ici : [Cliquez ici]({lien})",
+        ephemeral=True
+    )
+
+# 3) /resultats
+@bot.tree.command(
+    name="resultats",
+    description="Envoyer les résultats d'une formation à un utilisateur"
+)
+@is_staff()
+@app_commands.describe(
+    user="Utilisateur concerné",
+    formation="Formation concernée",
+    passe="A-t-il passé la formation ?"
+)
+@app_commands.choices(formation=[
+    app_commands.Choice(name="Staff", value="Staff"),
+    app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
+    app_commands.Choice(name="PCC", value="PCC"),
+])
+@app_commands.choices(passe=[
+    app_commands.Choice(name="Oui", value="oui"),
+    app_commands.Choice(name="Non", value="non"),
+])
+async def resultats(interaction: discord.Interaction, user: discord.Member, formation: app_commands.Choice[str], passe: app_commands.Choice[str]):
+    channel = bot.get_channel(RESULT_CHANNEL_ID)
+    if not channel:
+        await interaction.response.send_message("Le salon de résultats n'a pas été trouvé.", ephemeral=True)
+        return
+
+    status_text = "passé" if passe.value == "oui" else "pas passé"
+    bravo = " 🎉 BRAVO !" if passe.value == "oui" else ""
+
+    message = f"{user.mention}, vous avez {status_text} la formation de **{formation.value}**.{bravo}"
+
+    await channel.send(message)
+    await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+
+# 4) /create_product (Modal)
+class ProductModal(discord.ui.Modal, title="Créer un produit"):
+
+    titre = discord.ui.TextInput(label="Titre du modèle à vendre", max_length=100)
+    description = discord.ui.TextInput(label="Description du modèle", style=discord.TextStyle.paragraph)
+    prix = discord.ui.TextInput(label="Prix", max_length=20)
+    methode = discord.ui.TextInput(label="Méthode d'achat", max_length=100)
+
+    def __init__(self, author_id: int):
+        super().__init__()
+        self.author_id = author_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        products = load_products()
+
+        titre = self.titre.value.strip()
+        description = self.description.value.strip()
+        prix = self.prix.value.strip()
+        methode = self.methode.value.strip()
+
+        products[titre] = {
+            "description": description,
+            "prix": prix,
+            "methode": methode,
+            "author_id": self.author_id
+        }
+        save_products(products)
+
+        channel = bot.get_channel(PRODUCTS_CHANNEL_ID)
+        if channel:
+            embed = discord.Embed(title=f"Produit : {titre}", color=0x00ff00)
+            embed.add_field(name="Description", value=description, inline=False)
+            embed.add_field(name="Prix", value=prix)
+            embed.add_field(name="Méthode d'achat", value=methode)
+            embed.set_footer(text=f"Créé par {interaction.user.display_name}")
+
+            await channel.send(embed=embed)
+
+        await interaction.response.send_message("Produit créé et posté avec succès !", ephemeral=True)
+
+@bot.tree.command(name="create_product", description="Créer un produit à vendre")
+@is_staff()
+async def create_product(interaction: discord.Interaction):
+    modal = ProductModal(interaction.user.id)
+    await interaction.response.send_modal(modal)
+
+# 5) /buy_product
+@bot.tree.command(name="buy_product", description="Acheter un produit existant")
+@app_commands.describe(titre="Titre du produit à acheter")
+async def buy_product(interaction: discord.Interaction, titre: str):
+    products = load_products()
+
+    produit = products.get(titre)
+    if not produit:
+        await interaction.response.send_message(f"Produit '{titre}' introuvable.", ephemeral=True)
+        return
+
+    author_id = produit.get("author_id")
+    creator = interaction.guild.get_member(author_id)
+    if creator is None:
+        await interaction.response.send_message("Le créateur du produit n'est pas dans ce serveur.", ephemeral=True)
+        return
+
+    try:
+        # Envoyer un message privé au créateur
+        dm = await creator.create_dm()
+        await dm.send(
+            f"Bonjour {creator.display_name},\n"
+            f"L'utilisateur {interaction.user.mention} souhaite acheter votre produit '{titre}'.\n"
+            f"Contactez-le pour finaliser la transaction."
+        )
+        await interaction.response.send_message(
+            f"Vous êtes mis en relation avec le créateur du produit '{titre}'. Il a reçu votre demande en message privé.",
+            ephemeral=True
+        )
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "Impossible d'envoyer un message privé au créateur du produit.", ephemeral=True
+        )
+
+# --- Serveur web health check (exemple Koyeb) ---
 async def handle(request):
     return web.Response(text="OK")
 
@@ -68,102 +219,21 @@ async def run_webserver():
     site = web.TCPSite(runner, '0.0.0.0', 8000)
     await site.start()
 
-@bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
-async def statut(interaction: discord.Interaction):
-    status = bot.status
-    emoji, texte = {
-        discord.Status.online: ("🟢", "En ligne"),
-        discord.Status.idle: ("🟡", "Problèmes mineurs"),
-        discord.Status.offline: ("🔴", "Hors Ligne"),
-        discord.Status.invisible: ("🔴", "Hors Ligne")
-    }.get(status, ("❔", "Statut inconnu"))
-    await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
 
-@bot.tree.command(name="postuler", description="Obtenir le lien pour postuler à une formation")
-@discord.app_commands.choices(formation=[
-    discord.app_commands.Choice(name="Staff", value="Staff"),
-    discord.app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
-    discord.app_commands.Choice(name="PCC", value="PCC")
-])
-async def postuler(interaction: discord.Interaction, formation: discord.app_commands.Choice[str]):
-    lien = FORM_LINKS.get(formation.value)
-    if not lien:
-        await interaction.response.send_message("Lien de formulaire introuvable.", ephemeral=True)
-        return
-    await interaction.response.send_message(f"Pour postuler au rôle de **{formation.value}**, cliquez ici : [Cliquez ici]({lien})", ephemeral=True)
-
-@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
-@is_staff()
-@discord.app_commands.choices(formation=[
-    discord.app_commands.Choice(name="Staff", value="Staff"),
-    discord.app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
-    discord.app_commands.Choice(name="PCC", value="PCC")
-])
-@discord.app_commands.choices(passe=[
-    discord.app_commands.Choice(name="Oui", value="oui"),
-    discord.app_commands.Choice(name="Non", value="non")
-])
-async def resultats(interaction: discord.Interaction, user: discord.Member, formation: discord.app_commands.Choice[str], passe: discord.app_commands.Choice[str]):
-    channel = bot.get_channel(RESULT_CHANNEL_ID)
-    if not channel:
-        await interaction.response.send_message("Le salon de résultats n'a pas été trouvé.", ephemeral=True)
-        return
-    message = f"{user.mention}, vous avez {'passé' if passe.value == 'oui' else 'pas passé'} la formation de **{formation.value}**.{" 🎉 BRAVO !" if passe.value == 'oui' else ''}"
-    await channel.send(message)
-    await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
-
-@bot.tree.command(name="create_product", description="Créer un produit à vendre")
-@is_staff()
-async def create_product(interaction: discord.Interaction):
-    await interaction.response.send_modal(ProductModal(author_id=interaction.user.id))
-
-class ProductModal(discord.ui.Modal, title="Créer un produit"):
-    titre = discord.ui.TextInput(label="Titre du modèle", max_length=100)
-    description = discord.ui.TextInput(label="Description du modèle", style=discord.TextStyle.paragraph)
-    prix = discord.ui.TextInput(label="Prix")
-    methode = discord.ui.TextInput(label="Méthode d'achat")
-
-    def __init__(self, author_id):
-        super().__init__()
-        self.author_id = author_id
-
-    async def on_submit(self, interaction: discord.Interaction):
-        products = load_products()
-        product = {
-            "titre": self.titre.value,
-            "description": self.description.value,
-            "prix": self.prix.value,
-            "methode": self.methode.value,
-            "author_id": self.author_id
-        }
-        products.append(product)
-        save_products(products)
-
-        channel = bot.get_channel(MARKET_CHANNEL_ID)
-        embed = discord.Embed(title=self.titre.value, description=self.description.value, color=0x00ff00)
-        embed.add_field(name="Prix", value=self.prix.value)
-        embed.add_field(name="Méthode d'achat", value=self.methode.value)
-        embed.set_footer(text=f"Ajouté par {interaction.user.display_name}")
-        await channel.send(embed=embed)
-        await interaction.response.send_message("Produit créé avec succès.", ephemeral=True)
-
-@bot.tree.command(name="buy_product", description="Acheter un produit par son titre")
-@discord.app_commands.describe(titre="Titre du produit à acheter")
-async def buy_product(interaction: discord.Interaction, titre: str):
-    products = load_products()
-    match = next((p for p in products if p['titre'].lower() == titre.lower()), None)
-    if not match:
-        await interaction.response.send_message("Produit introuvable.", ephemeral=True)
-        return
-    seller = await bot.fetch_user(match['author_id'])
-    await seller.send(f"{interaction.user.name} souhaite acheter votre produit : **{match['titre']}**")
-    await interaction.response.send_message("Le vendeur a été notifié en message privé.", ephemeral=True)
+@bot.event
+async def on_ready():
+    print(f"Connecté en tant que {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Commands synced: {len(synced)}")
+    except Exception as e:
+        print(f"Erreur lors de la synchronisation des commandes : {e}")
 
 async def main():
     await run_webserver()
     token = os.getenv("TOKEN")
     if not token:
-        print("Erreur : TOKEN non défini !")
+        print("Erreur : la variable d'environnement TOKEN est manquante !")
         return
     await bot.start(token)
 
