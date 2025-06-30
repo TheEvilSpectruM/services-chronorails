@@ -7,11 +7,13 @@ import json
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 RESULT_CHANNEL_ID = 1359893180014792724
 TRAFFIC_CHANNEL_ID = 1379137936796291224
-PRODUCTS_CHANNEL_ID = 1387107501031293120
+MARKET_CHANNEL_ID = 1387107501031293120
+
 ROLE_IDS_ALLOWED = [1345857319585714316, 1361714714010189914]
 
 FORM_LINKS = {
@@ -23,16 +25,14 @@ FORM_LINKS = {
 PRODUCTS_FILE = "products.json"
 
 def load_products():
-    if os.path.exists(PRODUCTS_FILE):
-        with open(PRODUCTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    if not os.path.exists(PRODUCTS_FILE):
+        return []
+    with open(PRODUCTS_FILE, "r") as f:
+        return json.load(f)
 
-def save_products(products: dict):
-    with open(PRODUCTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(products, f, ensure_ascii=False, indent=4)
-
-PRODUCTS = load_products()
+def save_products(products):
+    with open(PRODUCTS_FILE, "w") as f:
+        json.dump(products, f, indent=4)
 
 def is_staff():
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -55,7 +55,7 @@ async def on_ready():
     except Exception as e:
         print(f"Erreur lors de la synchronisation des commandes : {e}")
 
-# Health check Koyeb
+# Health check pour hébergement
 async def handle(request):
     return web.Response(text="OK")
 
@@ -68,59 +68,102 @@ async def run_webserver():
     site = web.TCPSite(runner, '0.0.0.0', 8000)
     await site.start()
 
+@bot.tree.command(name="statut", description="Affiche le statut actuel du bot")
+async def statut(interaction: discord.Interaction):
+    status = bot.status
+    emoji, texte = {
+        discord.Status.online: ("🟢", "En ligne"),
+        discord.Status.idle: ("🟡", "Problèmes mineurs"),
+        discord.Status.offline: ("🔴", "Hors Ligne"),
+        discord.Status.invisible: ("🔴", "Hors Ligne")
+    }.get(status, ("❔", "Statut inconnu"))
+    await interaction.response.send_message(f"Statut du bot : {emoji} {texte}")
+
+@bot.tree.command(name="postuler", description="Obtenir le lien pour postuler à une formation")
+@discord.app_commands.choices(formation=[
+    discord.app_commands.Choice(name="Staff", value="Staff"),
+    discord.app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
+    discord.app_commands.Choice(name="PCC", value="PCC")
+])
+async def postuler(interaction: discord.Interaction, formation: discord.app_commands.Choice[str]):
+    lien = FORM_LINKS.get(formation.value)
+    if not lien:
+        await interaction.response.send_message("Lien de formulaire introuvable.", ephemeral=True)
+        return
+    await interaction.response.send_message(f"Pour postuler au rôle de **{formation.value}**, cliquez ici : [Cliquez ici]({lien})", ephemeral=True)
+
+@bot.tree.command(name="resultats", description="Envoyer les résultats d'une formation à un utilisateur")
+@is_staff()
+@discord.app_commands.choices(formation=[
+    discord.app_commands.Choice(name="Staff", value="Staff"),
+    discord.app_commands.Choice(name="Conducteur [CM]", value="Conducteur [CM]"),
+    discord.app_commands.Choice(name="PCC", value="PCC")
+])
+@discord.app_commands.choices(passe=[
+    discord.app_commands.Choice(name="Oui", value="oui"),
+    discord.app_commands.Choice(name="Non", value="non")
+])
+async def resultats(interaction: discord.Interaction, user: discord.Member, formation: discord.app_commands.Choice[str], passe: discord.app_commands.Choice[str]):
+    channel = bot.get_channel(RESULT_CHANNEL_ID)
+    if not channel:
+        await interaction.response.send_message("Le salon de résultats n'a pas été trouvé.", ephemeral=True)
+        return
+    message = f"{user.mention}, vous avez {'passé' if passe.value == 'oui' else 'pas passé'} la formation de **{formation.value}**.{" 🎉 BRAVO !" if passe.value == 'oui' else ''}"
+    await channel.send(message)
+    await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+
 @bot.tree.command(name="create_product", description="Créer un produit à vendre")
 @is_staff()
 async def create_product(interaction: discord.Interaction):
-    class ProductModal(discord.ui.Modal, title="Nouveau produit"):
-        titre = discord.ui.TextInput(label="Titre du modèle", placeholder="Nom du produit")
-        description = discord.ui.TextInput(label="Description du modèle", style=discord.TextStyle.paragraph)
-        prix = discord.ui.TextInput(label="Prix", placeholder="Par exemple: 10 euros")
-        methode = discord.ui.TextInput(label="Méthode d'achat", placeholder="PayPal, Virement, etc.")
+    await interaction.response.send_modal(ProductModal(author_id=interaction.user.id))
 
-        async def on_submit(self, interaction: discord.Interaction):
-            title = self.titre.value.strip()
-            PRODUCTS[title] = {
-                "description": self.description.value,
-                "price": self.prix.value,
-                "method": self.methode.value,
-                "author_id": self.author.id
-            }
-            save_products(PRODUCTS)
+class ProductModal(discord.ui.Modal, title="Créer un produit"):
+    titre = discord.ui.TextInput(label="Titre du modèle", max_length=100)
+    description = discord.ui.TextInput(label="Description du modèle", style=discord.TextStyle.paragraph)
+    prix = discord.ui.TextInput(label="Prix")
+    methode = discord.ui.TextInput(label="Méthode d'achat")
 
-            channel = bot.get_channel(PRODUCTS_CHANNEL_ID)
-            embed = discord.Embed(title=title, description=self.description.value, color=0x00ff00)
-            embed.add_field(name="Prix", value=self.prix.value, inline=False)
-            embed.add_field(name="Méthode d'achat", value=self.methode.value, inline=False)
-            embed.set_footer(text=f"Proposé par {self.author.display_name}")
-            await channel.send(embed=embed)
-            await interaction.response.send_message("Produit ajouté et publié !", ephemeral=True)
+    def __init__(self, author_id):
+        super().__init__()
+        self.author_id = author_id
 
-    modal = ProductModal()
-    modal.author = interaction.user
-    await interaction.response.send_modal(modal)
+    async def on_submit(self, interaction: discord.Interaction):
+        products = load_products()
+        product = {
+            "titre": self.titre.value,
+            "description": self.description.value,
+            "prix": self.prix.value,
+            "methode": self.methode.value,
+            "author_id": self.author_id
+        }
+        products.append(product)
+        save_products(products)
 
-@bot.tree.command(name="buy_product", description="Acheter un produit existant")
-@discord.app_commands.describe(titre="Titre du produit que vous souhaitez acheter")
+        channel = bot.get_channel(MARKET_CHANNEL_ID)
+        embed = discord.Embed(title=self.titre.value, description=self.description.value, color=0x00ff00)
+        embed.add_field(name="Prix", value=self.prix.value)
+        embed.add_field(name="Méthode d'achat", value=self.methode.value)
+        embed.set_footer(text=f"Ajouté par {interaction.user.display_name}")
+        await channel.send(embed=embed)
+        await interaction.response.send_message("Produit créé avec succès.", ephemeral=True)
+
+@bot.tree.command(name="buy_product", description="Acheter un produit par son titre")
+@discord.app_commands.describe(titre="Titre du produit à acheter")
 async def buy_product(interaction: discord.Interaction, titre: str):
-    produit = PRODUCTS.get(titre)
-    if not produit:
-        await interaction.response.send_message("❌ Produit introuvable.", ephemeral=True)
+    products = load_products()
+    match = next((p for p in products if p['titre'].lower() == titre.lower()), None)
+    if not match:
+        await interaction.response.send_message("Produit introuvable.", ephemeral=True)
         return
-
-    auteur = await bot.fetch_user(produit["author_id"])
-    acheteur = interaction.user
-
-    try:
-        await auteur.send(f"{acheteur.display_name} souhaite acheter votre produit **{titre}**. Prenez contact avec lui : {acheteur.mention}")
-        await interaction.response.send_message("✅ Le créateur du produit a été contacté. Vous serez mis en lien très vite.", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("❌ Impossible de contacter le créateur du produit. Merci de le mentionner directement.", ephemeral=True)
+    seller = await bot.fetch_user(match['author_id'])
+    await seller.send(f"{interaction.user.name} souhaite acheter votre produit : **{match['titre']}**")
+    await interaction.response.send_message("Le vendeur a été notifié en message privé.", ephemeral=True)
 
 async def main():
     await run_webserver()
     token = os.getenv("TOKEN")
     if not token:
-        print("Erreur : la variable d'environnement TOKEN est manquante !")
+        print("Erreur : TOKEN non défini !")
         return
     await bot.start(token)
 
