@@ -9,6 +9,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+from flask import Flask
+
+import threading
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot en ligne", 200
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+threading.Thread(target=run).start()
 
 # --- CONFIGURATION ---
 
