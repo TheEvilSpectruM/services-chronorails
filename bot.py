@@ -139,8 +139,16 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
 
     message = f"{user.mention}, vous avez {status_text} la formation de **{formation.value}**.{bravo}"
 
-    await channel.send(message)
-    await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+    try:
+        await channel.send(message)
+    except Exception as e:
+        await interaction.response.send_message(f"Erreur lors de l'envoi du message : {e}", ephemeral=True)
+        return
+
+    # Ne répondre à l'interaction QUE si elle n’a pas déjà reçu de réponse
+    if not interaction.response.is_done():
+        await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
+
 
 # 4. /renvoyer_embed
 @bot.tree.command(name="renvoyer_embed", description="Poster l'embed de statut trafic dans le salon")
