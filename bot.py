@@ -4,21 +4,20 @@ from discord import app_commands
 from discord.ui import Modal, TextInput
 import os
 import json
-import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- IDs à configurer ---
+# --- CONFIGURATION ---
+
 RESULT_CHANNEL_ID = 1359893180014792724
 TRAFFIC_CHANNEL_ID = 1379137936796291224
-PRODUCTS_CHANNEL_ID = 1387107501031293120  # Salon forum Discord pour posts produits
+PRODUCTS_CHANNEL_ID = 1387107501031293120  # Salon forum produit
 
 ROLE_IDS_ALLOWED = [1345857319585714316, 1361714714010189914]  # Staff & Responsable réseau
 
-# --- Formulaires Google ---
 FORM_LINKS = {
     "Staff": "https://docs.google.com/forms/d/1dkl-CJNiUlesD7sSDLJKw0HokJE8zLIrcN4GwD0nGqo/viewform?edit_requested=true",
     "Conducteur [CM]": "https://docs.google.com/forms/d/e/1FAIpQLSe2rxLd7w-rrPtPxxwvOAhDC7YD0J8II-YJn_MEyKhSg0csyQ/viewform?usp=header",
@@ -27,7 +26,16 @@ FORM_LINKS = {
 
 PRODUCTS_FILE = "products.json"
 
-# --- Utilitaires pour produits ---
+TRAFFIC_OPTIONS = {
+    "operationnel": "🟢 Opérationnel",
+    "accident": "🔴 Accident sur la ligne",
+    "travaux": "🟠 Fermée pour travaux",
+    "traffic": "🟡 Traffic important",
+    "fermee_accident": "⚫ Fermée pour accident",
+}
+
+# --- Utilitaires ---
+
 def load_products():
     try:
         with open(PRODUCTS_FILE, "r") as f:
@@ -39,7 +47,6 @@ def save_products(products):
     with open(PRODUCTS_FILE, "w") as f:
         json.dump(products, f, indent=4)
 
-# --- Check staff ---
 def is_staff():
     async def predicate(interaction: discord.Interaction) -> bool:
         member = interaction.user
@@ -51,6 +58,20 @@ def is_staff():
         await interaction.response.send_message("⛔ Vous devez être Staff ou Responsable réseau pour utiliser cette commande.", ephemeral=True)
         return False
     return app_commands.check(predicate)
+
+def create_traffic_embed(statuses=None):
+    if statuses is None:
+        statuses = {
+            "8Bis": "🟢 Opérationnel",
+            "3Bis": "🟢 Opérationnel",
+            "6": "🟢 Opérationnel"
+        }
+    embed = discord.Embed(title="INFO TRAFFIC - CHRONORAILS", color=0x1e90ff)
+    embed.add_field(name="Ligne 8Bis:", value=statuses.get("8Bis", "🟢 Opérationnel"), inline=False)
+    embed.add_field(name="Ligne 3Bis:", value=statuses.get("3Bis", "🟢 Opérationnel"), inline=False)
+    embed.add_field(name="Ligne 6:", value=statuses.get("6", "🟢 Opérationnel"), inline=False)
+    embed.set_footer(text="Mis à jour par ChronoRails")
+    return embed
 
 # --- Commandes ---
 
@@ -121,29 +142,7 @@ async def resultats(interaction: discord.Interaction, user: discord.Member, form
     await channel.send(message)
     await interaction.response.send_message(f"Résultat envoyé dans {channel.mention}", ephemeral=True)
 
-# 4. /traffic
-TRAFFIC_OPTIONS = {
-    "operationnel": "🟢 Opérationnel",
-    "accident": "🔴 Accident sur la ligne",
-    "travaux": "🟠 Fermée pour travaux",
-    "traffic": "🟡 Traffic important",
-    "fermee_accident": "⚫ Fermée pour accident",
-}
-
-def create_traffic_embed(statuses=None):
-    if statuses is None:
-        statuses = {
-            "8Bis": "🟢 Opérationnel",
-            "3Bis": "🟢 Opérationnel",
-            "6": "🟢 Opérationnel"
-        }
-    embed = discord.Embed(title="INFO TRAFFIC - CHRONORAILS", color=0x1e90ff)
-    embed.add_field(name="Ligne 8Bis:", value=statuses.get("8Bis", "🟢 Opérationnel"), inline=False)
-    embed.add_field(name="Ligne 3Bis:", value=statuses.get("3Bis", "🟢 Opérationnel"), inline=False)
-    embed.add_field(name="Ligne 6:", value=statuses.get("6", "🟢 Opérationnel"), inline=False)
-    embed.set_footer(text="Mis à jour par ChronoRails")
-    return embed
-
+# 4. /renvoyer_embed
 @bot.tree.command(name="renvoyer_embed", description="Poster l'embed de statut trafic dans le salon")
 @is_staff()
 async def renvoyer_embed(interaction: discord.Interaction):
@@ -156,6 +155,7 @@ async def renvoyer_embed(interaction: discord.Interaction):
     await channel.send(embed=embed)
     await interaction.response.send_message("Embed de trafic posté dans le salon.", ephemeral=True)
 
+# 5. /traffic
 @bot.tree.command(name="traffic", description="Met à jour le statut trafic d'une ligne")
 @is_staff()
 @app_commands.describe(
@@ -219,7 +219,7 @@ async def traffic(interaction: discord.Interaction, ligne: app_commands.Choice[s
     except Exception as e:
         await interaction.response.send_message(f"Erreur lors de la mise à jour : {e}", ephemeral=True)
 
-# 5. /creer_produit (Modal avec Tag)
+# 6. /creer_produit (Modal avec champ Tag texte validé)
 class ProductModal(Modal):
     def __init__(self, author_id):
         super().__init__(title="Créer un produit")
@@ -229,7 +229,7 @@ class ProductModal(Modal):
         self.description = TextInput(label="Description du modèle", style=discord.TextStyle.paragraph, max_length=500)
         self.prix = TextInput(label="Prix", placeholder="Ex: 10€", max_length=50)
         self.methode = TextInput(label="Méthode d'achat", placeholder="Ex: PayPal, virement...", max_length=100)
-        self.tag = TextInput(label="Tag (SNCF, RATP, Station, Assets, Autre)", max_length=10, placeholder="Ex: SNCF")
+        self.tag = TextInput(label="Tag (RATP, SNCF, Station assets, Autre)", max_length=20, placeholder="Ex: SNCF")
 
         self.add_item(self.titre)
         self.add_item(self.description)
@@ -244,14 +244,16 @@ class ProductModal(Modal):
         description = self.description.value.strip()
         prix = self.prix.value.strip()
         methode = self.methode.value.strip()
-        tag_input = self.tag.value.strip().capitalize()
+        tag_input = self.tag.value.strip()
 
-        valid_tags = ["SNCF", "RATP", "Station Assets", "Autre"]
+        valid_tags = ["RATP", "SNCF", "Station assets", "Autre"]
         if tag_input not in valid_tags:
-            await interaction.response.send_message("Tag invalide. Veuillez choisir parmi : SNCF, RATP, Station Assets, Autre.", ephemeral=True)
+            await interaction.response.send_message(
+                f"Tag invalide. Veuillez choisir parmi : {', '.join(valid_tags)}.",
+                ephemeral=True
+            )
             return
 
-        # Récupérer salon forum
         channel = bot.get_channel(PRODUCTS_CHANNEL_ID)
         if channel is None:
             await interaction.response.send_message("Salon produit introuvable.", ephemeral=True)
@@ -260,7 +262,6 @@ class ProductModal(Modal):
             await interaction.response.send_message("Le salon produit n'est pas un salon forum valide.", ephemeral=True)
             return
 
-        # Trouver le tag Discord
         tag_obj = None
         for t in channel.available_tags:
             if t.name.lower() == tag_input.lower():
@@ -296,7 +297,7 @@ async def creer_produit(interaction: discord.Interaction):
     modal = ProductModal(author_id=interaction.user.id)
     await interaction.response.send_modal(modal)
 
-# --- Event ready ---
+# --- EVENT ---
 
 @bot.event
 async def on_ready():
@@ -307,7 +308,7 @@ async def on_ready():
     except Exception as e:
         print(f"Erreur lors de la synchronisation des commandes : {e}")
 
-# --- Lancement du bot ---
+# --- RUN ---
 
 TOKEN = os.getenv("TOKEN")
 if not TOKEN:
